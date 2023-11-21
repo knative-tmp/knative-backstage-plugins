@@ -1,0 +1,1 @@
+export { KnativeEventTypeProvider } from './knativeEventTypeProvider';
