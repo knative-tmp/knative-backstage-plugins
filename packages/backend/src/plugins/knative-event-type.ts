@@ -1,0 +1,18 @@
+import { createRouter } from '@knative-tmp/plugin-knative-event-type-backend';
+import { Router } from 'express';
+import { PluginEnvironment } from '../types';
+
+export default async function createPlugin(
+    env: PluginEnvironment,
+): Promise<Router> {
+    // Here is where you will add all of the required initialization code that
+    // your backend plugin needs to be able to start!
+
+    env.logger.info('Initializing knative-event-type backend plugin');
+
+    // The env contains a lot of goodies, but our router currently only
+    // needs a logger
+    return await createRouter({
+        logger: env.logger,
+    });
+}
