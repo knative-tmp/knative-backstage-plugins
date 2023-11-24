@@ -1,5 +1,3 @@
-import {EventTypes} from './fake-data';
-
 import {
     ANNOTATION_LOCATION,
     ANNOTATION_ORIGIN_LOCATION,
@@ -7,46 +5,148 @@ import {
     Entity,
 } from '@backstage/catalog-model';
 
+import { Config } from '@backstage/config';
+import { PluginTaskScheduler, TaskRunner } from '@backstage/backend-tasks';
+
 import {
     EntityProvider,
     EntityProviderConnection,
 } from '@backstage/plugin-catalog-node';
 
 import {Logger} from 'winston';
+import {readKnativeEventTypeProviderConfigs} from "./config";
+import {KnativeEventTypeProviderConfig} from "./types";
+
+export function listServices(
+    baseUrl: string
+): Promise<any> {
+    return fetch(
+        `${baseUrl}`,
+    ).then(response => {
+        if (!response.ok) {
+            throw new Error(response.statusText);
+        }
+        // TODO: no any
+        return response.json() as Promise<any>;
+    });
+}
 
 export class KnativeEventTypeProvider implements EntityProvider {
     private readonly env:string;
-    // @ts-ignore
+    private readonly baseUrl: string;
     private readonly logger:Logger;
-    private connection?:EntityProviderConnection;
+    private readonly scheduleFn: () => Promise<void>;
+    private connection?: EntityProviderConnection;
 
-    /** [1] */
-    constructor(env:string, logger:Logger) {
-        this.env = env;
-        this.logger = logger;
+    static fromConfig(
+        configRoot: Config,
+        options: {
+            logger: Logger;
+            schedule?: TaskRunner;
+            scheduler?: PluginTaskScheduler;
+        },
+    ): KnativeEventTypeProvider[] {
+        const providerConfigs = readKnativeEventTypeProviderConfigs(configRoot);
+
+        if (!options.schedule && !options.scheduler) {
+            throw new Error('Either schedule or scheduler must be provided.');
+        }
+
+        const logger = options.logger.child({ plugin: 'knative-event-type-backend' });
+        logger.info(`Found ${providerConfigs.length} knative event type provider configs with ids: ${providerConfigs.map(providerConfig => providerConfig.id).join(', ')}`);
+
+        return providerConfigs.map(providerConfig => {
+            if (!options.schedule && !providerConfig.schedule) {
+                throw new Error(
+                    `No schedule provided neither via code nor config for KnativeEventType entity provider:${providerConfig.id}.`,
+                );
+            }
+
+            let taskRunner;
+
+            if (options.scheduler && providerConfig.schedule) {
+                // Create a scheduled task runner using the provided scheduler and schedule configuration
+                taskRunner = options.scheduler.createScheduledTaskRunner(
+                    providerConfig.schedule,
+                );
+            } else if (options.schedule) {
+                // Use the provided schedule directly
+                taskRunner = options.schedule;
+            } else {
+                // Handle the case where both options.schedule and options.scheduler are missing
+                throw new Error('Neither schedule nor scheduler is provided.');
+            }
+
+            return new KnativeEventTypeProvider(
+                providerConfig,
+                options.logger,
+                taskRunner,
+            );
+        });
     }
 
-    /** [2] */
+    constructor(config:KnativeEventTypeProviderConfig, logger:Logger, taskRunner: TaskRunner) {
+        this.env = config.id;
+        this.baseUrl = config.baseUrl;
+
+        this.logger = logger.child({
+            target: this.getProviderName(),
+        });
+
+        this.scheduleFn = this.createScheduleFn(taskRunner);
+    }
+
+    private createScheduleFn(taskRunner: TaskRunner): () => Promise<void> {
+        return async () => {
+            const taskId = `${this.getProviderName()}:run`;
+            return taskRunner.run({
+                id: taskId,
+                fn: async () => {
+                    try {
+                        await this.run();
+                    } catch (error: any) {
+                        // Ensure that we don't log any sensitive internal data:
+                        this.logger.error(
+                            `Error while fetching Knative EventTypes from ${this.baseUrl}`,
+                            {
+                                // Default Error properties:
+                                name: error.name,
+                                message: error.message,
+                                stack: error.stack,
+                                // Additional status code if available:
+                                status: error.response?.status,
+                            },
+                        );
+                    }
+                },
+            });
+        };
+    }
+
     getProviderName():string {
+        // TODO
         return `fake-event-type-${this.env}`;
     }
 
-    /** [3] */
     async connect(connection:EntityProviderConnection):Promise<void> {
         this.connection = connection;
+        await this.scheduleFn();
     }
 
-    /** [4] */
     async run():Promise<void> {
         if (!this.connection) {
             throw new Error('Not initialized');
         }
 
+        // TODO
+        const foo = await listServices("http://localhost:8000");
+
         const entities:Entity[] = [];
 
+        // TODO: this is not needed when we have the real data
         // de-duplicate based on eventType.spec.type
         const eventTypeMap = new Map<string, any>();
-        for (const eventType of EventTypes.items) {
+        for (const eventType of foo) {
             eventTypeMap.set(eventType.spec.type, eventType);
         }
 

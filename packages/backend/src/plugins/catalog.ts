@@ -10,20 +10,14 @@ export default async function createPlugin(
   const builder = await CatalogBuilder.create(env);
   builder.addProcessor(new ScaffolderEntitiesProcessor());
 
-  const knativeEventTypeProvider = new KnativeEventTypeProvider('production', env.logger);
-  builder.addEntityProvider(knativeEventTypeProvider);
+  const knativeEventTypeProviders = KnativeEventTypeProvider.fromConfig(env.config, {
+    logger: env.logger,
+    scheduler: env.scheduler,
+  });
+  builder.addEntityProvider(knativeEventTypeProviders);
 
   const { processingEngine, router } = await builder.build();
   await processingEngine.start();
-
-  await env.scheduler.scheduleTask({
-    id: 'run_knative_event_type_refresh',
-    fn: async () => {
-      await knativeEventTypeProvider.run();
-    },
-    frequency: { minutes: 30 },
-    timeout: { minutes: 10 },
-  });
 
   return router;
 }
