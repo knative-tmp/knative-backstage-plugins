@@ -3,9 +3,7 @@ import {Config} from '@backstage/config';
 
 import {KnativeEventTypeProviderConfig} from './types';
 
-export function readKnativeEventTypeProviderConfigs(
-    config:Config,
-):KnativeEventTypeProviderConfig[] {
+export function readKnativeEventTypeProviderConfigs(config:Config):KnativeEventTypeProviderConfig[] {
     const providerConfigs = config.getOptionalConfig(
         'catalog.providers.knativeEventType',
     );
@@ -19,10 +17,7 @@ export function readKnativeEventTypeProviderConfigs(
         );
 }
 
-function readKnativeEventTypeProviderConfig(
-    id:string,
-    config:Config,
-):KnativeEventTypeProviderConfig {
+function readKnativeEventTypeProviderConfig(id:string, config:Config):KnativeEventTypeProviderConfig {
     const baseUrl = config.getString('baseUrl');
 
     const schedule = config.has('schedule')
