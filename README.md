@@ -8,3 +8,6 @@ To start the app, run:
 yarn install
 yarn dev
 ```
+
+TODO:
+- Backstage to support events natively, similar to OpenAPI, AsyncAPI, GraphQL, gRPC

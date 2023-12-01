@@ -1,5 +1,11 @@
 import {PluginTaskScheduler, TaskRunner} from '@backstage/backend-tasks';
-import {ApiEntity, Entity, ANNOTATION_LOCATION, ANNOTATION_ORIGIN_LOCATION} from '@backstage/catalog-model';
+import {
+    ApiEntity,
+    Entity,
+    ANNOTATION_LOCATION,
+    ANNOTATION_ORIGIN_LOCATION,
+    EntityLink,
+} from '@backstage/catalog-model';
 
 import {Config} from '@backstage/config';
 
@@ -9,15 +15,29 @@ import {Logger} from 'winston';
 import {readKnativeEventTypeProviderConfigs} from "./config";
 import {KnativeEventTypeProviderConfig} from "./types";
 
-export function listEventTypes(baseUrl:string):Promise<any> {
-    return fetch(`${baseUrl}`,)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(response.statusText);
-            }
-            // TODO: no any
-            return response.json() as Promise<any>;
-        });
+type EventType = {
+    name:string;
+    namespace:string;
+    type:string;
+    uid:string;
+    description?:string;
+    schemaData?:string;
+    schemaURL?:string;
+    labels?:Record<string, string>;
+    annotations?:Record<string, string>;
+    provider?:{
+        name:string;
+        namespace:string;
+        kind:string;
+    },
+};
+
+export async function listEventTypes(baseUrl:string):Promise<EventType[]> {
+    const response = await fetch(`${baseUrl}/eventtypes`);
+    if (!response.ok) {
+        throw new Error(response.statusText);
+    }
+    return await response.json() as Promise<EventType[]>;
 }
 
 export class KnativeEventTypeProvider implements EntityProvider {
@@ -126,14 +146,14 @@ export class KnativeEventTypeProvider implements EntityProvider {
 
         const entities:Entity[] = [];
 
-        // TODO: this is not needed when we have the real data
-        // de-duplicate based on eventType.spec.type
-        const eventTypeMap = new Map<string, any>();
-        for (const eventType of eventTypes) {
-            eventTypeMap.set(eventType.spec.type, eventType);
-        }
+        // TODO: deduplication still necessary?
+        // const eventTypeMap = new Map<string, any>();
+        // for (const eventType of eventTypes) {
+        //     // TODO: namespace
+        //     eventTypeMap.set(eventType.type, eventType);
+        // }
 
-        for (let [_, eventType] of eventTypeMap) {
+        for (const eventType of eventTypes) {
             const entity = this.buildEventTypeEntity(eventType);
             entities.push(entity);
         }
@@ -147,61 +167,69 @@ export class KnativeEventTypeProvider implements EntityProvider {
         });
     }
 
-    private buildEventTypeEntity(eventType:any):ApiEntity {
-        // const location = `url:${this.baseUrl}/apiconfig/services/${service.service.id}`;
-        // const spec = JSON.parse(apiDoc.api_doc.body);
+    private buildEventTypeEntity(eventType:EventType):ApiEntity {
+        const annotations = eventType.annotations ?? {} as Record<string, string>;
+        // TODO: no route exists yet
+        annotations[ANNOTATION_ORIGIN_LOCATION] = annotations[ANNOTATION_LOCATION] = `url:${this.baseUrl}/eventtype/${eventType.namespace}/${eventType.name}`;
+
+        const links:EntityLink[] = [];
+        if (eventType.schemaURL) {
+            links.push({
+                title: "View external schema",
+                icon: "scaffolder",
+                url: eventType.schemaURL
+            });
+        }
+
+        // TODO: remove?
+        // let relations:EntityRelation[] = [];
+        // if (eventType.provider) {
+        //     relations = [...relations, {
+        //         // type: RELATION_API_PROVIDED_BY,
+        //         type: 'apiProvidedBy',
+        //         // TODO: ref should point to the Backstage Broker provider
+        //         // targetRef: `${this.getProviderName()}:${eventType.provider.kind}:${eventType.provider.namespace}/${eventType.provider.name}`,
+        //         targetRef: `component:default/example-website`,
+        //     }];
+        //     console.log(relations);
+        //
+        //     // TODO:
+        //     // partOf: https://backstage.io/docs/features/software-catalog/well-known-relations/#partof-and-haspart
+        //     // - system?
+        //
+        //     // TODO:
+        //     // apiConsumedBy: https://backstage.io/docs/features/software-catalog/well-known-relations/#consumesapi-and-apiconsumedby
+        //     // - triggers?
+        // }
 
         return {
-            kind: 'API',
             apiVersion: 'backstage.io/v1alpha1',
+            kind: 'API',
             metadata: {
-                annotations: {
-                    // TODO: location?
-                    [ANNOTATION_LOCATION]: `url:TODO`,
-                    [ANNOTATION_ORIGIN_LOCATION]: `url:TODO`,
-                    // TODO: view/edit URL?
-                    // "backstage.io/view-url": `TODO`,
-                    // "backstage.io/edit-url": `TODO`,
-                    // TODO: any annotations?
-                    // ...eventType.metadata.annotations
-                },
-                name: eventType.spec.type,
-                description: eventType.spec.description,
-                // TODO: we don't need namespace?
-                // namespace: eventType.metadata.namespace,
-                // TODO: what would be the title?
-                // title: eventType.spec.type,
-                labels: eventType.metadata.labels || {},
-                links: [
-                    // TODO: we don't need any links?
-                    // {
-                    //     title: "View in UI",
-                    //     icon: "dashboard",
-                    //     url: `TODO: view URL`
-                    // }
-                ],
+                name: eventType.name,
+                namespace: eventType.namespace,
+                title: eventType.type,
+                description: eventType.description,
+                // TODO: is there a value showing Kubernetes labels in Backstage?
+                labels: eventType.labels || {} as Record<string, string>,
+                // TODO: is there a value showing Kubernetes annotations in Backstage?
+                annotations: annotations,
+                // we don't use tags
+                tags: [],
+                links: links,
             },
             spec: {
                 type: 'eventType',
                 lifecycle: this.env,
+                // TODO
                 system: 'knative-event-mesh',
+                // TODO
                 owner: 'knative',
-                definition: eventType.spec.schemaData || "{}",
+                definition: eventType.schemaData || "{}",
             },
-            // TODO: any relations?
-            // relations: [
-            //     {
-            //         type: "apiProvidedBy",
-            //         targetRef: `this.getProviderType():broker:${eventType.spec.reference.namespace}/${eventType.spec.reference.name}`,
-            //     }
-            // ],
-            // status: {
-            //     items: [
-            //         {
-            //
-            //         }
-            //     ]
-            // }
+            // TODO: remove?
+            // Backstage doesn't like empty relations
+            // relations: relations.length > 0 ? relations : undefined,
         };
     }
 }
