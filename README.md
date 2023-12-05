@@ -11,3 +11,6 @@ yarn dev
 
 TODO:
 - Backstage to support events natively, similar to OpenAPI, AsyncAPI, GraphQL, gRPC
+
+
+npm install node-gyp -g
