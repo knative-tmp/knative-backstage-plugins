@@ -220,9 +220,8 @@ export class KnativeEventMeshProvider implements EntityProvider {
             apiVersion: 'backstage.io/v1alpha1',
             kind: 'API',
             metadata: {
-                name: eventType.name,
+                name: eventType.type,
                 namespace: eventType.namespace,
-                title: eventType.type,
                 description: eventType.description,
                 // TODO: is there a value showing Kubernetes labels in Backstage?
                 labels: eventType.labels || {} as Record<string, string>,
