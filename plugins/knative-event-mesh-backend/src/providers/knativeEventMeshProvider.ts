@@ -155,13 +155,6 @@ export class KnativeEventMeshProvider implements EntityProvider {
 
         const entities:Entity[] = [];
 
-        // TODO: deduplication still necessary?
-        // const eventTypeMap = new Map<string, any>();
-        // for (const eventType of eventMesh) {
-        //     // TODO: namespace
-        //     eventTypeMap.set(eventType.type, eventType);
-        // }
-
         for (const eventType of eventMesh.eventTypes) {
             const entity = this.buildEventTypeEntity(eventType);
             entities.push(entity);
