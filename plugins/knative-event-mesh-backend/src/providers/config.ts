@@ -1,11 +1,11 @@
 import {readTaskScheduleDefinitionFromConfig} from '@backstage/backend-tasks';
 import {Config} from '@backstage/config';
 
-import {KnativeEventTypeProviderConfig} from './types';
+import {KnativeEventMeshProviderConfig} from './types';
 
-export function readKnativeEventTypeProviderConfigs(config:Config):KnativeEventTypeProviderConfig[] {
+export function readKnativeEventMeshProviderConfigs(config:Config):KnativeEventMeshProviderConfig[] {
     const providerConfigs = config.getOptionalConfig(
-        'catalog.providers.knativeEventType',
+        'catalog.providers.knativeEventMesh',
     );
     if (!providerConfigs) {
         return [];
@@ -13,11 +13,11 @@ export function readKnativeEventTypeProviderConfigs(config:Config):KnativeEventT
     return providerConfigs
         .keys()
         .map(id =>
-            readKnativeEventTypeProviderConfig(id, providerConfigs.getConfig(id)),
+            readKnativeEventMeshProviderConfig(id, providerConfigs.getConfig(id)),
         );
 }
 
-function readKnativeEventTypeProviderConfig(id:string, config:Config):KnativeEventTypeProviderConfig {
+function readKnativeEventMeshProviderConfig(id:string, config:Config):KnativeEventMeshProviderConfig {
     const baseUrl = config.getString('baseUrl');
 
     const schedule = config.has('schedule')

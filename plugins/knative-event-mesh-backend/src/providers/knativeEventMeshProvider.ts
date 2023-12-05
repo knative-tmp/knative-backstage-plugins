@@ -12,8 +12,8 @@ import {Config} from '@backstage/config';
 import {EntityProvider, EntityProviderConnection,} from '@backstage/plugin-catalog-node';
 
 import {Logger} from 'winston';
-import {readKnativeEventTypeProviderConfigs} from "./config";
-import {KnativeEventTypeProviderConfig} from "./types";
+import {readKnativeEventMeshProviderConfigs} from "./config";
+import {KnativeEventMeshProviderConfig} from "./types";
 
 type EventType = {
     name:string;
@@ -32,15 +32,24 @@ type EventType = {
     },
 };
 
-export async function listEventTypes(baseUrl:string):Promise<EventType[]> {
-    const response = await fetch(`${baseUrl}/eventtypes`);
+type Broker = {
+
+};
+
+type EventMesh = {
+    eventTypes:EventType[];
+    brokers:Broker[];
+};
+
+export async function getEventMesh(baseUrl:string):Promise<EventMesh> {
+    const response = await fetch(`${baseUrl}`);
     if (!response.ok) {
         throw new Error(response.statusText);
     }
-    return await response.json() as Promise<EventType[]>;
+    return await response.json() as Promise<EventMesh>;
 }
 
-export class KnativeEventTypeProvider implements EntityProvider {
+export class KnativeEventMeshProvider implements EntityProvider {
     private readonly env:string;
     private readonly baseUrl:string;
     private readonly logger:Logger;
@@ -54,19 +63,19 @@ export class KnativeEventTypeProvider implements EntityProvider {
             schedule?:TaskRunner;
             scheduler?:PluginTaskScheduler;
         },
-    ):KnativeEventTypeProvider[] {
-        const providerConfigs = readKnativeEventTypeProviderConfigs(configRoot);
+    ):KnativeEventMeshProvider[] {
+        const providerConfigs = readKnativeEventMeshProviderConfigs(configRoot);
 
         if (!options.schedule && !options.scheduler) {
             throw new Error('Either schedule or scheduler must be provided.');
         }
 
-        const logger = options.logger.child({plugin: 'knative-event-type-backend'});
-        logger.info(`Found ${providerConfigs.length} knative event type provider configs with ids: ${providerConfigs.map(providerConfig => providerConfig.id).join(', ')}`);
+        const logger = options.logger.child({plugin: 'knative-event-mesh-backend'});
+        logger.info(`Found ${providerConfigs.length} knative event mesh provider configs with ids: ${providerConfigs.map(providerConfig => providerConfig.id).join(', ')}`);
 
         return providerConfigs.map(providerConfig => {
             if (!options.schedule && !providerConfig.schedule) {
-                throw new Error(`No schedule provided neither via code nor config for KnativeEventType entity provider:${providerConfig.id}.`);
+                throw new Error(`No schedule provided neither via code nor config for KnativeEventMesh entity provider:${providerConfig.id}.`);
             }
 
             let taskRunner;
@@ -82,7 +91,7 @@ export class KnativeEventTypeProvider implements EntityProvider {
                 throw new Error('Neither schedule nor scheduler is provided.');
             }
 
-            return new KnativeEventTypeProvider(
+            return new KnativeEventMeshProvider(
                 providerConfig,
                 options.logger,
                 taskRunner,
@@ -90,7 +99,7 @@ export class KnativeEventTypeProvider implements EntityProvider {
         });
     }
 
-    constructor(config:KnativeEventTypeProviderConfig, logger:Logger, taskRunner:TaskRunner) {
+    constructor(config:KnativeEventMeshProviderConfig, logger:Logger, taskRunner:TaskRunner) {
         this.env = config.id;
         this.baseUrl = config.baseUrl;
 
@@ -112,7 +121,7 @@ export class KnativeEventTypeProvider implements EntityProvider {
                     } catch (error:any) {
                         // Ensure that we don't log any sensitive internal data:
                         this.logger.error(
-                            `Error while fetching Knative EventTypes from ${this.baseUrl}`,
+                            `Error while fetching Knative Event Mesh from ${this.baseUrl}`,
                             {
                                 // Default Error properties:
                                 name: error.name,
@@ -129,7 +138,7 @@ export class KnativeEventTypeProvider implements EntityProvider {
     }
 
     getProviderName():string {
-        return `knative-event-type-${this.env}`;
+        return `knative-event-mesh-${this.env}`;
     }
 
     async connect(connection:EntityProviderConnection):Promise<void> {
@@ -142,18 +151,18 @@ export class KnativeEventTypeProvider implements EntityProvider {
             throw new Error('Not initialized');
         }
 
-        const eventTypes = await listEventTypes(this.baseUrl);
+        const eventMesh = await getEventMesh(this.baseUrl);
 
         const entities:Entity[] = [];
 
         // TODO: deduplication still necessary?
         // const eventTypeMap = new Map<string, any>();
-        // for (const eventType of eventTypes) {
+        // for (const eventType of eventMesh) {
         //     // TODO: namespace
         //     eventTypeMap.set(eventType.type, eventType);
         // }
 
-        for (const eventType of eventTypes) {
+        for (const eventType of eventMesh.eventTypes) {
             const entity = this.buildEventTypeEntity(eventType);
             entities.push(entity);
         }
