@@ -4,7 +4,7 @@ import {
     Entity,
     ANNOTATION_LOCATION,
     ANNOTATION_ORIGIN_LOCATION,
-    EntityLink,
+    EntityLink, ComponentEntity,
 } from '@backstage/catalog-model';
 
 import {Config} from '@backstage/config';
@@ -25,15 +25,15 @@ type EventType = {
     schemaURL?:string;
     labels?:Record<string, string>;
     annotations?:Record<string, string>;
-    provider?:{
-        name:string;
-        namespace:string;
-        kind:string;
-    },
 };
 
 type Broker = {
-
+    name:string;
+    namespace:string;
+    uid:string;
+    labels?:Record<string, string>;
+    annotations?:Record<string, string>;
+    providedEventTypes?:string[];
 };
 
 type EventMesh = {
@@ -167,6 +167,11 @@ export class KnativeEventMeshProvider implements EntityProvider {
             entities.push(entity);
         }
 
+        for (const broker of eventMesh.brokers) {
+            const entity = this.buildBrokerEntity(broker);
+            entities.push(entity);
+        }
+
         await this.connection.applyMutation({
             type: 'full',
             entities: entities.map(entity => ({
@@ -240,5 +245,38 @@ export class KnativeEventMeshProvider implements EntityProvider {
             // Backstage doesn't like empty relations
             // relations: relations.length > 0 ? relations : undefined,
         };
+    }
+
+    private buildBrokerEntity(broker:Broker): ComponentEntity {
+        const annotations = broker.annotations ?? {} as Record<string, string>;
+        // TODO: no route exists yet
+        annotations[ANNOTATION_ORIGIN_LOCATION] = annotations[ANNOTATION_LOCATION] = `url:${this.baseUrl}/broker/${broker.namespace}/${broker.name}`;
+
+        return {
+            apiVersion: 'backstage.io/v1alpha1',
+            kind: 'Component',
+            metadata: {
+                // TODO: names are too generic: default/default
+                name: broker.name,
+                namespace: broker.namespace,
+                // TODO: is there a value showing Kubernetes labels in Backstage?
+                labels: broker.labels || {} as Record<string, string>,
+                // TODO: is there a value showing Kubernetes annotations in Backstage?
+                annotations: annotations,
+                // we don't use tags
+                tags: [],
+                // TODO: any links?
+                // links: links,
+            },
+            spec: {
+                type: 'broker',
+                lifecycle: this.env,
+                // TODO
+                system: 'knative-event-mesh',
+                // TODO
+                owner: 'knative',
+                providesApis: !broker.providedEventTypes ? [] : broker.providedEventTypes.map((eventType:string) => `api:${eventType}`),
+            }
+        }
     }
 }
